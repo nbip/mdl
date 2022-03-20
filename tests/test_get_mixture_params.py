@@ -12,8 +12,8 @@ class TestGetMixtureParams(unittest.TestCase):
     def setUp(self) -> None:
         tf.random.set_seed(123)
         self.b, self.h, self.w, self.c = 5, 4, 4, 3
-
         self.n_mix = 5
+
         x = np.random.rand(self.b, self.h, self.w, self.c).astype(np.float32)
 
         # bin the data, to resemble images
@@ -57,6 +57,7 @@ class TestGetMixtureParams(unittest.TestCase):
         """
         loc, logscale, mix_logits = get_mixture_params(parameters=self.logits, x=None)
         print(loc.shape)
+
 
 if __name__ == '__main__':
     # PYTHONPATH=. python ./tests/test_get_mixture_params.py

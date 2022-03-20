@@ -15,6 +15,31 @@ class TestDiscretizedLogistic(unittest.TestCase):
         self.img1 = 2 * tf.random.uniform([self.batch_size, 784]) - 1
         self.img2 = tf.constant(np.linspace(-1, 1, 256))
 
+        self.b, self.h, self.w, self.c = 5, 4, 4, 3
+        x = np.random.rand(self.b, self.h, self.w, self.c).astype(np.float32)
+
+        # bin the data, to resemble images
+        bin = True
+        if bin:
+            x = np.floor(x * 256.) / 255.
+        self.x = tf.convert_to_tensor(x)
+
+    def test_pdf_sum(self):
+        """
+        Note about the distribution
+        - It takes the probability density in an interval and turns this into the probability at a discrete point
+        - When sampling the pdf from a continuous distribution and summing the points, you have to
+          multiply with the interval width, to get a trapez estimate of the area under the curve, which should sum to 1
+        - When sampling the pmf of the discretized distribution you should in principle only sample at the discrete
+          points at which it is defined. If you sample only the discrete points, these should sum to 1..
+        """
+        dl = DiscretizedLogistic(loc=-1., logscale=0., low=-1., high=1., levels=256.)
+        pdf_sampling_points = np.linspace(-1., 1., 256)
+        lp = dl.log_prob(pdf_sampling_points)
+        pdf_sum = np.sum(np.exp(lp))
+        print(pdf_sum)
+        self.assertAlmostEqual(pdf_sum, 1., places=10, msg="PDF summation differs from 1. by more than 5 decimal places")
+
     def test_interval_width(self):
         dl = DiscretizedLogistic(loc=0., logscale=0., low=0., high=255., levels=256.)
 
