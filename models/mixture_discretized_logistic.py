@@ -4,7 +4,7 @@ from tensorflow_probability import distributions as tfd
 from .discretized_logistic import DiscretizedLogistic
 
 
-class MixtureDiscretizedLogistic(DiscretizedLogistic):
+class PlainMixtureDiscretizedLogistic(DiscretizedLogistic):
     """
     Mixture of discretized logistic distributions, NOT specific to pixels.
 
@@ -29,7 +29,7 @@ class MixtureDiscretizedLogistic(DiscretizedLogistic):
     """
 
     def __init__(self, loc, logscale, mix_logits, low=-1., high=1., levels=256.):
-        super(MixtureDiscretizedLogistic, self).__init__(loc, logscale, low, high, levels)
+        super(PlainMixtureDiscretizedLogistic, self).__init__(loc, logscale, low, high, levels)
 
         # ---- assume the mixture parameters are added as the last dimension, e.g. [batch, features, n_mix]
         self.mix_logits = mix_logits
@@ -41,7 +41,7 @@ class MixtureDiscretizedLogistic(DiscretizedLogistic):
         # ---- You can have as many leading dimensions as wanted
 
         # ---- [batch, n_features, n_mix]
-        discretized_logistic_log_probs = super(MixtureDiscretizedLogistic).log_prob(x[..., None])
+        discretized_logistic_log_probs = super(PlainMixtureDiscretizedLogistic, self).log_prob(x[..., None])
 
         # ---- [batch, n_features, n_mix]
         mix_log_probs = tf.nn.log_softmax(self.mix_logits, axis=-1)
@@ -61,7 +61,7 @@ class MixtureDiscretizedLogistic(DiscretizedLogistic):
         # TODO: maybe reparameterizable?
 
         # ---- sample the logistic distributions
-        logistic_samples = super(MixtureDiscretizedLogistic, self).sample(n_samples)
+        logistic_samples = super(PlainMixtureDiscretizedLogistic, self).sample(n_samples)
 
         # ---- pin out the samples chosen by the categorical distribution
         # we do that by multiplying the samples with a onehot encoding of the
@@ -77,8 +77,9 @@ class PixelMixtureDiscretizedLogistic(DiscretizedLogistic):
     """
     Mixture of discretized logistic distributions, specific to pixels.
 
-    The spcificity to pixels comes from summing over the sub-pixel logprobs
-    before weighing with the mixture logits.
+    The specificity to pixels comes from summing over the sub-pixel logprobs
+    before weighing with the mixture logits. That is, there are a number
+    of mixtures for each pixel, not for each sub-pixel.
 
     This version is set up to be comparable to the original OpenAI pixelCNN version
     https://github.com/openai/pixel-cnn/blob/master/pixel_cnn_pp/nn.py
@@ -127,13 +128,13 @@ class PixelMixtureDiscretizedLogistic(DiscretizedLogistic):
         # ---- [batch, h, w, ch, n_mix]
         discretized_logistic_log_probs = super(PixelMixtureDiscretizedLogistic, self).log_prob(x[..., None])
 
-        # ---- convert mixture logits to log-probs
+        # ---- convert mixture logits to mixture log weights
         # ---- [batch, h, w, n_mix]
-        mix_log_probs = tf.nn.log_softmax(self.mix_logits, axis=-1)
+        mix_log_weights = tf.nn.log_softmax(self.mix_logits, axis=-1)
 
         # ---- pixel-cnn style: sum over sub-pixel log_probs before mixture-weighing
         # https://github.com/openai/pixel-cnn/blob/master/pixel_cnn_pp/nn.py#L83
-        weighted_log_probs = tf.reduce_sum(discretized_logistic_log_probs, axis=3) + mix_log_probs
+        weighted_log_probs = tf.reduce_sum(discretized_logistic_log_probs, axis=3) + mix_log_weights
 
         # ---- sum over weighted log-probs
         # ---- [batch, h, w, ch]
@@ -157,7 +158,7 @@ class PixelMixtureDiscretizedLogistic(DiscretizedLogistic):
         # we do that by multiplying the samples with a onehot encoding of the
         # mixture samples then summing along the last axis
 
-        cat_samples_onehot = tf.one_hot(cat_samples, axis=-1, depth=self.mix_logits.shape[-1])
+        cat_samples_onehot = tf.one_hot(cat_samples, axis=-1, depth=self.n_mix)
         selected_samples = tf.reduce_sum(logistic_samples * cat_samples_onehot, axis=-1)
 
         return selected_samples

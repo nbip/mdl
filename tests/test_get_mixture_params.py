@@ -34,7 +34,7 @@ class TestGetMixtureParams(unittest.TestCase):
         p(R,G,B) = p(R)p(G|R=r)p(B|R=r,G=g)
         conditioning on the actual observed pixel values for the R and G channels.
         This is a test to make sure the that there are no gradients from
-        p(R,G,B) with respect to the B channel
+        p(R,G,B) with respect to the observed B channel
         """
 
         x = tf.Variable(self.x)

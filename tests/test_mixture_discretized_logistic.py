@@ -4,7 +4,8 @@ import unittest
 import numpy as np
 import tensorflow as tf
 
-from models import PixelMixtureDiscretizedLogistic, MixtureDiscretizedLogistic, get_mixture_params
+from models import (MixtureDiscretizedLogisticOpenai,
+                    PixelMixtureDiscretizedLogistic, get_mixture_params)
 
 
 class TestMixtureDiscretized(unittest.TestCase):
