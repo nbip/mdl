@@ -12,7 +12,7 @@ from tensorflow_probability import distributions as tfd
 from tensorflow_probability.python.internal import reparameterization
 
 
-class MixtureDiscretizedLogistic(tfd.Distribution):
+class MixtureDiscretizedLogisticOpenai(tfd.Distribution):
     """
     https://www.tensorflow.org/probability/api_docs/python/tfp/distributions/Distribution
     """
@@ -30,10 +30,10 @@ class MixtureDiscretizedLogistic(tfd.Distribution):
     def _log_prob(self, x):
         return discretized_mix_logistic_loss(x, self.logits, sum_all=False)
 
-    def _sample_n(self, n, seed=None):
+    def _sample_n(self, n, seed=None, **kwargs):
         # https://github.com/tensorflow/probability/blob/v0.16.0/tensorflow_probability/python/distributions/logistic.py#L160
 
-        # ---- reshape logits to have [n] as the leading dimension
+        # ---- expand logits to have [n] as the leading dimension
         n_logits = tf.repeat(tf.expand_dims(self.logits, axis=0), repeats=n, axis=0)
 
         # ---- merge the sample dimension into the batch dimension
@@ -183,7 +183,7 @@ if __name__ == '__main__':
     logits_tf = np.transpose(logits_t, axes=[0, 2, 3, 1])
     logits_tf = tf.convert_to_tensor(logits_tf)
 
-    p = MixtureDiscretizedLogistic(logits_tf)
+    p = MixtureDiscretizedLogisticOpenai(logits_tf)
 
     p.log_prob(2. * x_tf - 1.)
 

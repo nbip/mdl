@@ -1,8 +1,14 @@
 """
+Mixture of discretized logistic distributions
+
+Rewritten for customizability, but results equal
+to the original OpenAI PixelCNN version, see the tests
+
 https://github.com/openai/pixel-cnn/blob/master/pixel_cnn_pp/nn.py
 https://github.com/rasmusbergpalm/vnca/blob/main/modules/dml.py
 https://github.com/NVlabs/NVAE/blob/master/distributions.py#L120
 https://github.com/openai/vdvae/blob/main/vae_helpers.py
+https://www.tensorflow.org/probability/api_docs/python/tfp/distributions/Distribution
 """
 import numpy as np
 import tensorflow as tf
@@ -13,11 +19,18 @@ from tensorflow_probability.python.internal import reparameterization
 class MixtureDiscretizedLogistic(tfd.Distribution):
     def __init__(self, parameters):
         """
-        Mixture of discretized logistic distributions
+        Mixture of discretized logistic distributions.
 
         Assumes parameters shape: [batch, h, w, n_mix * 10]
 
-        https://www.tensorflow.org/probability/api_docs/python/tfp/distributions/Distribution
+        For each pixel there are n_mix * 10 parameters in total:
+        - n_mix logits. These cover the whole pixel
+        - n_mix * 3 loc. These are specific to each sub-pixel (r,g,b)
+        - n_mix * 3 logscale. These are specific to each sub-pixel (r,g,b)
+        - n_mix * 3 coefficients: 1 for p(g|r) and 2 for p(b|r,g)
+
+        This version is set up to be comparable to the original OpenAI pixelCNN version
+        https://github.com/openai/pixel-cnn/blob/master/pixel_cnn_pp/nn.py
         """
         super().__init__(
             dtype=parameters.dtype,
@@ -39,32 +52,34 @@ class MixtureDiscretizedLogistic(tfd.Distribution):
 
     def _log_prob(self, x):
         """
-        Mixture of discretized logistic distrbution log probabilities.
+        Mixture of discretized logistic distribution log probabilities.
 
         Assume x shape:            [batch, h, w, ch]
-        Assume parameter shape:    [batch, h, w, ch, n_mix]
-        Assume mix_logits shape:   [batch, h, w, n_mix]
+        Assume parameter shape:    [batch, h, w, ch, n_mix * 10]
         """
 
+        # ---- [batch, h, w, ch, n_mix]
         loc, logscale, mix_logits = self._get_autoregressive_params(x)
 
         # ---- extend the last dimension of x to match the parameter shapes
         # ---- [batch, h, w, ch, n_mix]
         discretized_logistic_log_probs = self._discretized_logistic_log_prob(x[..., None], loc, logscale)
 
-        # ---- convert mixture logits to log-probs
+        # ---- convert mixture logits to mixture log weights
         # ---- [batch, h, w, n_mix]
-        mix_log_probs = tf.nn.log_softmax(mix_logits, axis=-1)
+        mix_log_weights = tf.nn.log_softmax(mix_logits, axis=-1)
 
         # ---- pixel-cnn style: sum over sub-pixel log_probs before mixture-weighing
         # https://github.com/openai/pixel-cnn/blob/master/pixel_cnn_pp/nn.py#L83
-        weighted_log_probs = tf.reduce_sum(discretized_logistic_log_probs, axis=3) + mix_log_probs
+        weighted_log_probs = tf.reduce_sum(discretized_logistic_log_probs, axis=3) + mix_log_weights
 
         # ---- sum over weighted log-probs
         # ---- [batch, h, w, ch]
         return tf.reduce_logsumexp(weighted_log_probs, axis=-1)
 
     def _split_params(self):
+        """Split self._parameters into loc, logscale coeffs, mix_logits """
+
         # ---- get the mixture logits, for a full pixel there are n_mix logits (not 3 x n_mix)
         mix_logits = self._parameters[..., :self.n_mix]  # [batch, h, w, n_mix]
 
@@ -73,39 +88,36 @@ class MixtureDiscretizedLogistic(tfd.Distribution):
 
         # ---- split the rest of the parameters -> [batch, h, w, 3, n_mix]
         _loc, logscale, coeffs = tf.split(parameters_reshaped, num_or_size_splits=3, axis=-1)
-        logscale = tf.maximum(logscale, -7)
+        logscale = tf.maximum(logscale, -7.)
         coeffs = tf.nn.tanh(coeffs)
 
         return _loc, logscale, coeffs, mix_logits
 
     def _get_autoregressive_params(self, x):
         """
-        Prepare parameters for a mixture of discretized logistic distributions.
-
-        This version is set up to be comparable to the original OpenAI pixelCNN version
-        https://github.com/openai/pixel-cnn/blob/master/pixel_cnn_pp/nn.py
+        Prepare parameters for a mixture of discretized logistic distributions, with autoregression in the pixel channels.
 
         Assumes parameters shape: [batch, h, w, n_mix * 10]
-        Assumes x shape: [batch, h, w, n_channels = 3]
+        Assumes x shape: [batch, h, w, ch = 3]
         Assumes x in [-1., 1.]
 
         :returns loc, logscale, mix_logits  # [batch, h, w, 3, n_mix]
 
         Each pixel is modeled as
-        p(r,g,b) = p(r)p(g|r)p(b|r,g)
-        either conditioning on the actual pixel values.
+        p(R,G,B) = p(R)p(G|R=r)p(B|R=r,G=g)
+        conditioning on the actual pixel values for the red and green channels.
 
         For each pixel there are n_mix * 10 parameters in total:
         - n_mix logits. These cover the whole pixel
         - n_mix * 3 loc. These are specific to each sub-pixel (r,g,b)
         - n_mix * 3 logscale. These are specific to each sub-pixel (r,g,b)
-        - n_mix * 3 coefficients: 1 for p(g|r) and 2 for p(b|r,g). These are specific to each sub-pixel (r,g,b)
+        - n_mix * 3 coefficients: 1 for p(g|r) and 2 for p(b|r,g).
         """
 
         _loc, logscale, coeffs, mix_logits = self._split_params()
 
-        # ---- adjust the locs, so instead of p(r,g,b) = p(r)p(g)p(b) we get
-        # p(r,g,b) = p(r)p(g|r)p(b|r,g)
+        # ---- adjust the locs, so instead of p(R,G,B) = p(R)p(G)p(B) we get
+        # p(R,G,B) = p(R)p(G|R=r)p(B|R=r,G=g)
         loc_r = _loc[..., 0, :]
         loc_g = _loc[..., 1, :] + coeffs[..., 0, :] * x[..., 0, None]
         loc_b = _loc[..., 2, :] + coeffs[..., 1, :] * x[..., 0, None] + coeffs[..., 2, :] * x[..., 1, None]
@@ -114,15 +126,15 @@ class MixtureDiscretizedLogistic(tfd.Distribution):
 
         return loc, logscale, mix_logits
 
-    def _logistic_cdf(self, x):
-        a = (x - self.loc) * tf.exp(-self.logscale)
+    def _logistic_cdf(self, x, loc, logscale):
+        a = (x - loc) * tf.exp(-logscale)
         return tf.nn.sigmoid(a)
 
     def _logistic_log_prob_approx(self, x, loc, logscale):
         """
         log pdf value times interval width as an approximation to the area under the curve in that interval
         """
-        a = (x - loc) / tf.exp(logscale)
+        a = (x - loc) * tf.exp(-logscale)
         log_pdf_val = - a - logscale - 2 * tf.nn.softplus(-a)
         return log_pdf_val + tf.cast(tf.math.log(self.interval_width), tf.float32)
 
@@ -166,24 +178,28 @@ class MixtureDiscretizedLogistic(tfd.Distribution):
 
         return safe_log_prob_with_edges
 
-    def _sample_n(self, n, seed=None):
+    def _sample_n(self, n, seed=None, **kwargs):
         _loc, logscale, coeffs, mix_logits = self._split_params()
 
         # ---- sample from logistic distribution
         logistic_samples = tfd.Logistic(_loc, tf.exp(logscale)).sample(n)
 
-        # ---- adjust the logistic samples, so instead of p(r,g,b) = p(r)p(g)p(b) we get
-        # p(r,g,b) = p(r)p(g|r)p(b|r,g)
+        # ---- adjust the logistic samples, so instead of p(R,G,B) = p(R)p(G)p(B) we get
+        # p(R,G,B) = p(R)p(G|R)p(B|R,G)
+        # Notice we're not conditioning on any observed pixel values here
         sample_r = tf.clip_by_value(logistic_samples[..., 0, :], -1., 1.)
         sample_g = tf.clip_by_value(logistic_samples[..., 1, :] + coeffs[..., 0, :] * sample_r, -1., 1.)
         sample_b = tf.clip_by_value(
             logistic_samples[..., 2, :] + coeffs[..., 1, :] * sample_r + coeffs[..., 2, :] * sample_g, -1., 1.)
 
-        autoregressive_samples = tf.concat([sample_r[..., None, :], sample_g[..., None, :], sample_b[..., None, :]],
-                                           axis=-2)
+        autoregressive_samples = tf.concat([
+            sample_r[..., None, :],
+            sample_g[..., None, :],
+            sample_b[..., None, :]], axis=-2)
 
         # ---- sample mixture indicator from categorical distribution
         categorical_samples = tfd.OneHotCategorical(logits=mix_logits, dtype=tf.float32).sample(n)
+        # ---- expand pixel dimension
         categorical_samples = tf.expand_dims(categorical_samples, axis=-2)
 
         # ---- pin out the samples chosen by the categorical distribution
@@ -192,6 +208,38 @@ class MixtureDiscretizedLogistic(tfd.Distribution):
         selected_samples = tf.reduce_sum(autoregressive_samples * categorical_samples, axis=-1)
 
         return selected_samples
+
+    @property
+    def loc(self):
+        """Distribution parameter for the location."""
+        return tf.reduce_mean(self.sample(100_000), axis=0)
+
+    # @property
+    # def loc(self):
+    #     """Distribution parameter for the location."""
+    #     # TODO: I don't think you can do this...
+    #
+    #     _loc, logscale, coeffs, mix_logits = self._split_params()
+    #
+    #     # ---- adjust the locs, so instead of p(R,G,B) = p(R)p(G)p(B) we get
+    #     # p(R,G,B) = p(R)p(G|R)p(B|R,G)
+    #     # Notice we're not conditioning on any observed pixel values here
+    #     loc_r = tf.clip_by_value(_loc[..., 0, :], -1., 1.)
+    #     loc_g = tf.clip_by_value(_loc[..., 1, :] + coeffs[..., 0, :] * loc_r, -1., 1.)
+    #     loc_b = tf.clip_by_value(_loc[..., 2, :] + coeffs[..., 1, :] * loc_r + coeffs[..., 2, :] * loc_g, -1., 1)
+    #
+    #     loc = tf.concat([loc_r[..., None, :], loc_g[..., None, :], loc_b[..., None, :]], axis=-2)
+    #
+    #     # ---- convert mixture logits to mixture weights [batch, h, w, n_mix]
+    #     mix_weights = tf.nn.softmax(mix_logits, axis=-1)
+    #
+    #     # ---- expand pixel dimension [batch, h, w, 1, n_mix]
+    #     mix_weights = tf.expand_dims(mix_weights, axis=-2)
+    #
+    #     # ---- weigh the locs by the mixture weights [batch, h, w, ch]
+    #     weighted_locs = tf.reduce_sum(loc * mix_weights, axis=-1)
+    #
+    #     return weighted_locs
 
 
 if __name__ == '__main__':
@@ -223,7 +271,8 @@ if __name__ == '__main__':
     p = MixtureDiscretizedLogistic(logits_tf)
 
     p.log_prob(2. * x_tf - 1.)
-
     p.sample()
-
     p.sample(10)
+
+    sample_mean = tf.reduce_mean(p.sample(10000), axis=0)
+    analytical_mean = p.loc

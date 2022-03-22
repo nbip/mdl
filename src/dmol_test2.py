@@ -1,4 +1,5 @@
-"""Verbose test of discretized logistic distribution.
+"""
+Verbose test of discretized logistic distribution.
 Note about the distribution
 - It takes the probability density in an interval and turns this into the probability at a discrete point
 - When sampling the pdf from a continuous distribution and summing the points, you have to
@@ -8,7 +9,7 @@ Note about the distribution
   only the discrete points, these should sum to 1. That means that the height of that stick is the area in the
   rectangle in the original continuous distribution. Therefore, for plotting purposes, when plotting the discretized
   distribution along side the original continuous distribution, you should divide the pmf by the interval width to get
-  back to the rectangle height."""
+  back to the rectangle height.
 # https://www.tensorflow.org/guide/autodiff  https://www.tensorflow.org/guide/advanced_autodiff
 # https://www.tensorflow.org/tutorials/customization/custom_training_walkthrough
 # https://www.tensorflow.org/guide/intro_to_modules
@@ -18,6 +19,7 @@ Note about the distribution
 # https://keras.io/guides/customizing_what_happens_in_fit/
 # https://keras.io/api/losses/
 # https://github.com/rll/deepul/blob/master/homeworks/solutions/hw1_solutions.ipynb
+"""
 
 import os
 
@@ -30,15 +32,6 @@ sns.set()
 from tensorflow_probability import distributions as tfd
 
 import models
-
-save_str = 'discretized_task01'
-
-os.environ["CUDA_VISIBLE_DEVICES"] = ""
-# ---- dynamic GPU memory allocation
-gpus = tf.config.list_physical_devices('GPU')
-if gpus:
-    tf.config.experimental.set_memory_growth(gpus[0], True)
-
 
 
 class Disc:
@@ -55,7 +48,7 @@ class Disc:
 
     def log_prob(self, x):
 
-        inv_scale = np.exp(-self.logscale)
+        inv_scale = tf.exp(-self.logscale)
 
         plus_in = inv_scale * (x + 0.5 - self.loc)
         min_in = inv_scale * (x - 0.5 - self.loc)
@@ -74,6 +67,7 @@ class Disc:
                                   tf.where(x > self.high - 1 - 1e-3,
                                               log_cdf_min, log_cdf_delta))
         return x_log_probs
+
 
 def discretize_data(x, low, high, levels):
     return np.round(np.clip(x, low, high) * (levels - 1)) / (levels - 1)
@@ -113,7 +107,6 @@ def data2(n):
     split = int(0.8 * n)
     train_data, test_data = X[:split], X[split:]
     return train_data, test_data, p1, p2
-
 
 
 def train(model, x, optimizer):
@@ -173,81 +166,92 @@ class MyModel(tf.keras.Model):
         return loss, {}
 
 
-# ---- generate data
-low = 0.
-high = 1.
-levels = 256.
-bin_width = (high - low) / (levels - 1)
-bins = np.linspace(low, high, int(levels)) - bin_width / 2
+if __name__ == '__main__':
 
-p = models.DiscretizedLogistic(loc=0.75, logscale=-4., low=low, high=high, levels=levels)
-x = np.linspace(low, high, int(levels))
-y = np.exp(p.log_prob(x)) / bin_width
-np.sum(y)
+    save_str = 'discretized_task01'
 
-xtrain, xval, p_true = data1(5000)
-y_true = np.exp(p_true.log_prob(x))
+    os.environ["CUDA_VISIBLE_DEVICES"] = ""
+    # ---- dynamic GPU memory allocation
+    gpus = tf.config.list_physical_devices('GPU')
+    if gpus:
+        tf.config.experimental.set_memory_growth(gpus[0], True)
 
-fig, ax = plt.subplots()
-sns.histplot(x=xtrain[:, 0], bins=bins, stat='density', ax=ax)
-ax.step(x, y, where='mid')
-sns.lineplot(x, y_true, ax=ax)
-plt.savefig(save_str + '_data')
-plt.show()
-plt.close()
+    # ---- generate data
+    low = 0.
+    high = 1.
+    levels = 256.
+    bin_width = (high - low) / (levels - 1)
+    bins = np.linspace(low, high, int(levels)) - bin_width / 2
 
-# ---- test model forward pass
-model = MyModel(low=low, high=high, levels=levels)
-res = model(xtrain)
+    p = models.DiscretizedLogistic(loc=0.75, logscale=-4., low=low, high=high, levels=levels)
+    x = np.linspace(low, high, int(levels))
+    y = np.exp(p.log_prob(x)) / bin_width
+    np.sum(y)
 
-# ---- fit learnable parameters of logistic distribution to generated data
-optimizer = tf.optimizers.Adam(1e-2)
-epochs = 1000
+    xtrain, xval, p_true = data1(5000)
+    y_true = np.exp(p_true.log_prob(x))
 
-train_loss, val_loss = train_epochs(model, xtrain, xval, optimizer, epochs)
+    fig, ax = plt.subplots()
+    sns.histplot(x=xtrain[:, 0], bins=bins, stat='density', ax=ax)
+    ax.step(x, y, where='mid')
+    sns.lineplot(x, y_true, ax=ax)
+    plt.savefig(save_str + '_data')
+    plt.show()
+    plt.close()
 
-loc_hat = model.loc.numpy()
-logscale_hat = model.logscale.numpy()
+    # ---- test model forward pass
+    model = MyModel(low=low, high=high, levels=levels)
+    res = model(xtrain)
 
-fitted_p = tfd.Logistic(loc=loc_hat, scale=np.exp(logscale_hat))
-y = np.exp(fitted_p.log_prob(x[:, None])).squeeze()
-fitted_p = models.DiscretizedLogistic(loc=loc_hat, logscale=logscale_hat, low=low, high=high, levels=levels)
-y = np.exp(fitted_p.log_prob(x[:, None])).squeeze() / bin_width
+    # ---- fit learnable parameters of logistic distribution to generated data
+    optimizer = tf.optimizers.Adam(1e-2)
+    epochs = 1000
 
-fig, ax = plt.subplots()
-sns.histplot(x=xtrain[:, 0], bins=bins, stat='density', ax=ax)
-# sns.lineplot(x, y, ax=ax)
-ax.step(x, y, where='mid')
-plt.savefig(save_str + '_fitted')
-plt.show()
-plt.close()
+    train_loss, val_loss = train_epochs(model, xtrain, xval, optimizer, epochs)
 
-# ---- what happens in a mixture?
-xtrain, xval, p1, p2 = data2(5000)
+    loc_hat = model.loc.numpy()
+    logscale_hat = model.logscale.numpy()
 
-y = 0.5 * np.exp(p1.log_prob(x)) + 0.5 * np.exp(p2.log_prob(x))
+    fitted_p = tfd.Logistic(loc=loc_hat, scale=np.exp(logscale_hat))
+    y_logistic = np.exp(fitted_p.log_prob(x[:, None])).squeeze()
 
-fig, ax = plt.subplots()
-sns.histplot(x=xtrain[:, 0], bins=bins, stat='density', ax=ax)
-sns.lineplot(x, y, ax=ax)
-plt.savefig(save_str + '_data2')
-plt.show()
-plt.close()
+    fitted_p = models.DiscretizedLogistic(loc=loc_hat, logscale=logscale_hat, low=low, high=high, levels=levels)
+    y_discretized = np.exp(fitted_p.log_prob(x[:, None])).squeeze() / bin_width
 
-train_loss, val_loss = train_epochs(model, xtrain, xval, optimizer, epochs)
+    fig, ax = plt.subplots()
+    # sns.histplot(x=xtrain[:, 0], bins=bins, stat='density', ax=ax)
+    sns.lineplot(x, y_logistic, ax=ax)
+    ax.step(x, y_discretized, where='mid')
+    plt.savefig(save_str + '_fitted')
+    plt.show()
+    plt.close()
 
-loc_hat = model.loc.numpy()
-logscale_hat = model.logscale.numpy()
+    # ---- what happens in a mixture?
+    xtrain, xval, p1, p2 = data2(5000)
 
-fitted_p = models.DiscretizedLogistic(loc=loc_hat, logscale=logscale_hat, low=low, high=high, levels=levels)
-y = np.exp(fitted_p.log_prob(x[:, None])).squeeze()
-fitted_p = models.DiscretizedLogistic(loc=loc_hat, logscale=logscale_hat, low=low, high=high, levels=levels)
-y = np.exp(fitted_p.log_prob(x[:, None])).squeeze() / bin_width
+    y = 0.5 * np.exp(p1.log_prob(x)) + 0.5 * np.exp(p2.log_prob(x))
 
-fig, ax = plt.subplots()
-sns.histplot(x=xtrain[:, 0], bins=bins, stat='density', ax=ax)
-ax.step(x, y, where='mid')
-plt.savefig(save_str + '_fitted2')
-plt.show()
-plt.close()
+    fig, ax = plt.subplots()
+    sns.histplot(x=xtrain[:, 0], bins=bins, stat='density', ax=ax)
+    sns.lineplot(x, y, ax=ax)
+    plt.savefig(save_str + '_data2')
+    plt.show()
+    plt.close()
 
+    train_loss, val_loss = train_epochs(model, xtrain, xval, optimizer, epochs)
+
+    loc_hat = model.loc.numpy()
+    logscale_hat = model.logscale.numpy()
+
+    fitted_p = tfd.Logistic(loc=loc_hat, scale=np.exp(logscale_hat))
+    y_logistic = np.exp(fitted_p.log_prob(x[:, None])).squeeze()
+    fitted_p = models.DiscretizedLogistic(loc=loc_hat, logscale=logscale_hat, low=low, high=high, levels=levels)
+    y_discretized = np.exp(fitted_p.log_prob(x[:, None])).squeeze() / bin_width
+
+    fig, ax = plt.subplots()
+    sns.histplot(x=xtrain[:, 0], bins=bins, stat='density', ax=ax)
+    sns.lineplot(x, y_logistic, ax=ax)
+    ax.step(x, y_discretized, where='mid')
+    plt.savefig(save_str + '_fitted2')
+    plt.show()
+    plt.close()

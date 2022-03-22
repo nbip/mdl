@@ -8,11 +8,11 @@ import tensorflow as tf
 import torch as t
 
 from models import (DiscretizedMixtureLogitsDistribution,
+                    MixtureDiscretizedLogistic,
+                    MixtureDiscretizedLogisticOpenai,
                     PixelMixtureDiscretizedLogistic,
                     discretized_mix_logistic_loss, get_mixture_params,
-                    MixtureDiscretizedLogistic,
-                    MixtureDiscretizedLogistic2)
-
+                    sample_from_discretized_mix_logistic)
 
 if __name__ == '__main__':
 
@@ -44,6 +44,7 @@ if __name__ == '__main__':
     lpx_torch = p_x_given_z_torch.log_prob(x_t)
     print(lpx_torch)
 
+
     # ---- tensorflow version from openai PixelCNN
     lpx_tf = discretized_mix_logistic_loss(x_tf * 2. - 1., logits_tf, sum_all=False)
     print(lpx_tf)
@@ -60,11 +61,23 @@ if __name__ == '__main__':
     print(tf.reduce_sum(lpx_tf - lpx_torch))
 
     # ---- Openai wrapper
-    px = MixtureDiscretizedLogistic(logits_tf)
+    px = MixtureDiscretizedLogisticOpenai(logits_tf)
     lpx_tf2 = px.log_prob(2. * x_tf - 1.)
     print(tf.reduce_sum(lpx_tf - lpx_tf2))
 
     # ---- NSBI 2
-    px = MixtureDiscretizedLogistic2(logits_tf)
-    lpx_tf3 = px.log_prob(2. * x_tf - 1.)
+    px2 = MixtureDiscretizedLogistic(logits_tf)
+    lpx_tf3 = px2.log_prob(2. * x_tf - 1.)
     print(tf.reduce_sum(lpx_tf - lpx_tf3))
+
+    # ---- samples
+    # openai_samples = tf.stack([sample_from_discretized_mix_logistic(logits_tf, n_mixtures) for _ in range(100_000)])
+    openai_samples2 = px.sample(100_000)
+    vnca_mean = p_x_given_z_torch.mean.permute(0, 2, 3, 1)
+    nbip_samples = px2.sample(100_000)
+
+    # tf.reduce_mean((openai_samples + 1) / 2, axis=0)
+    tf.reduce_mean((openai_samples2 + 1) / 2, axis=0)
+    vnca_mean
+    tf.reduce_mean((nbip_samples + 1) / 2, axis=0)
+    (px2.loc + 1) / 2

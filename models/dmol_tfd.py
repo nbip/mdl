@@ -1,13 +1,14 @@
 """
+Plain discretized logistic subclassing tfd.Distribution
 https://github.com/tensorflow/probability/blob/v0.16.0/tensorflow_probability/python/distributions/distribution.py
 https://github.com/tensorflow/probability/blob/v0.16.0/tensorflow_probability/python/distributions/logistic.py#L33-L236
 """
 import tensorflow as tf
 import tensorflow_probability as tfp
 from tensorflow_probability import distributions as tfd
-from tensorflow_probability.python.internal import reparameterization
-from tensorflow_probability.python.internal import dtype_util
-from tensorflow_probability.python.internal import tensor_util
+from tensorflow_probability.python.internal import (dtype_util,
+                                                    reparameterization,
+                                                    tensor_util)
 
 
 class DiscretizedLogistic(tfp.distributions.Distribution):

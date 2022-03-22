@@ -77,7 +77,7 @@ def sample_from_discretized_mix_logistic(l,nr_mix):
     logit_probs = l[:, :, :, :nr_mix]
     l = tf.reshape(l[:, :, :, nr_mix:], xs + [nr_mix*3])
     # sample mixture indicator from softmax
-    sel = tf.one_hot(tf.argmax(logit_probs - tf.math.log(-tf.math.log(tf.random_uniform(logit_probs.get_shape(), minval=1e-5, maxval=1. - 1e-5))), 3), depth=nr_mix, dtype=tf.float32)
+    sel = tf.one_hot(tf.argmax(logit_probs - tf.math.log(-tf.math.log(tf.random.uniform(logit_probs.get_shape(), minval=1e-5, maxval=1. - 1e-5))), 3), depth=nr_mix, dtype=tf.float32)
     sel = tf.reshape(sel, xs[:-1] + [1,nr_mix])
     # select logistic parameters
     means = tf.reduce_sum(l[:,:,:,:,:nr_mix]*sel,4)
@@ -85,7 +85,7 @@ def sample_from_discretized_mix_logistic(l,nr_mix):
     coeffs = tf.reduce_sum(tf.nn.tanh(l[:,:,:,:,2*nr_mix:3*nr_mix])*sel,4)
     # sample from logistic & clip to interval
     # we don't actually round to the nearest 8bit value when sampling
-    u = tf.random_uniform(means.get_shape(), minval=1e-5, maxval=1. - 1e-5)
+    u = tf.random.uniform(means.get_shape(), minval=1e-5, maxval=1. - 1e-5)
     x = means + tf.exp(log_scales)*(tf.math.log(u) - tf.math.log(1. - u))
     x0 = tf.minimum(tf.maximum(x[:,:,:,0], -1.), 1.)
     x1 = tf.minimum(tf.maximum(x[:,:,:,1] + coeffs[:,:,:,0]*x0, -1.), 1.)

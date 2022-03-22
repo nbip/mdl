@@ -1,4 +1,5 @@
-"""Verbose test of mixture of discretized logistic distribution
+"""
+Verbose test of mixture of discretized logistic distribution
 Note about the distribution
 - It takes the probability mass in an interval and turns this into the probability at a discrete point
 - When sampling the pdf from a continuous distribution and summing the points, you have to
@@ -8,7 +9,7 @@ Note about the distribution
   only the discrete points, these should sum to 1. That means that the height of that stick is the area in the
   rectangle in the original continuous distribution. Therefore, for plotting puroposes, when plotting the discretized
   distribution along side the original continuous distribution, you should divide the pmf by the interval width to get
-  back to the rectangle height."""
+  back to the rectangle height.
 # https://www.tensorflow.org/guide/autodiff  https://www.tensorflow.org/guide/advanced_autodiff
 # https://www.tensorflow.org/tutorials/customization/custom_training_walkthrough
 # https://www.tensorflow.org/guide/intro_to_modules
@@ -18,9 +19,7 @@ Note about the distribution
 # https://keras.io/guides/customizing_what_happens_in_fit/
 # https://keras.io/api/losses/
 # https://github.com/rll/deepul/blob/master/homeworks/solutions/hw1_solutions.ipynb
-
-# x is [batch, features]. Extend to [batch, features, n_mix]
-# logits are [batch, n_mix]. Extend to [ batch, features, n_mix]
+"""
 
 import os
 
@@ -32,16 +31,7 @@ import tensorflow as tf
 sns.set()
 from tensorflow_probability import distributions as tfd
 
-from models import DiscretizedLogistic
-from models import MixtureDiscretizedLogistic as DiscretizedLogisticMix
-
-save_str = 'discretized_task01'
-
-os.environ["CUDA_VISIBLE_DEVICES"] = ""
-# ---- dynamic GPU memory allocation
-gpus = tf.config.list_physical_devices('GPU')
-if gpus:
-    tf.config.experimental.set_memory_growth(gpus[0], True)
+from models import DiscretizedLogistic, PlainMixtureDiscretizedLogistic
 
 
 def discretize_data(x, low, high, levels):
@@ -136,7 +126,7 @@ class MyModel(tf.keras.Model):
 
         # x has dimensions [batch, features]
 
-        px = DiscretizedLogisticMix(loc=self.loc, logscale=self.logscale, mix_logits=self.logits)
+        px = PlainMixtureDiscretizedLogistic(loc=self.loc, logscale=self.logscale, mix_logits=self.logits)
 
         log_px = tf.reduce_sum(px.log_prob(x), axis=-1)
 
@@ -145,59 +135,70 @@ class MyModel(tf.keras.Model):
         return loss, {}
 
 
-# ---- generate data
-low = 0.
-high = 1.
-levels = 256
-bin_width = (high - low) / (levels - 1)
-bins = np.arange(levels) / (levels - 1) - bin_width / 2
+if __name__ == '__main__':
 
-# ----
-xtrain, xval, p1, p2 = data2(5000)
+    save_str = 'discretized_task01'
 
-# ---- test model forward pass
-model = MyModel()
-res = model(xtrain)
+    os.environ["CUDA_VISIBLE_DEVICES"] = ""
+    # ---- dynamic GPU memory allocation
+    gpus = tf.config.list_physical_devices('GPU')
+    if gpus:
+        tf.config.experimental.set_memory_growth(gpus[0], True)
 
-x = np.linspace(0, 1, levels)
-y = 0.5 * np.exp(p1.log_prob(x)) + 0.5 * np.exp(p2.log_prob(x))
+    # ---- generate data
+    low = 0.
+    high = 1.
+    levels = 256
+    bin_width = (high - low) / (levels - 1)
+    bins = np.arange(levels) / (levels - 1) - bin_width / 2
 
-fig, ax = plt.subplots()
-sns.histplot(x=xtrain[:, 0], bins=bins, stat='density', ax=ax)
-sns.lineplot(x, y, ax=ax)
-plt.savefig(save_str + '_data2')
-plt.show()
-plt.close()
+    # ----
+    xtrain, xval, p1, p2 = data2(5000)
 
-optimizer = tf.optimizers.Adam(1e-2)
-epochs = 200
-train_loss, val_loss = train_epochs(model, xtrain, xval, optimizer, epochs)
+    # ---- test model forward pass
+    model = MyModel()
+    res = model(xtrain)
 
-loc_hat = model.loc.numpy()
-logscale_hat = model.logscale.numpy()
-logits_hat = model.logits.numpy()
+    x = np.linspace(0, 1, levels)
+    y = 0.5 * np.exp(p1.log_prob(x)) + 0.5 * np.exp(p2.log_prob(x))
 
-fitted_p1 = tfd.Logistic(loc=loc_hat[:, :, 0], scale=np.exp(logscale_hat[:, :, 0]))
-fitted_p2 = tfd.Logistic(loc=loc_hat[:, :, 1], scale=np.exp(logscale_hat[:, :, 1]))
-y = 0.5 * np.exp(fitted_p1.log_prob(x[:, None])).squeeze() + 0.5 * np.exp(fitted_p2.log_prob(x[:, None, None])).squeeze()
+    fig, ax = plt.subplots()
+    sns.histplot(x=xtrain[:, 0], bins=bins, stat='density', ax=ax)
+    sns.lineplot(x, y, ax=ax)
+    plt.savefig(save_str + '_data2')
+    plt.show()
+    plt.close()
 
-fitted_p1 = DiscretizedLogistic(loc=loc_hat[:, :, 0], logscale=logscale_hat[:, :, 0], low=low, high=high, levels=levels)
-fitted_p2 = DiscretizedLogistic(loc=loc_hat[:, :, 1], logscale=logscale_hat[:, :, 1], low=low, high=high, levels=levels)
-y = 0.5 * np.exp(fitted_p1.log_prob(x[:, None])).squeeze() / bin_width + 0.5 * np.exp(fitted_p2.log_prob(x[:, None, None])).squeeze() / bin_width
+    optimizer = tf.optimizers.Adam(1e-2)
+    epochs = 200
+    train_loss, val_loss = train_epochs(model, xtrain, xval, optimizer, epochs)
 
-fig, ax = plt.subplots()
-sns.histplot(x=xtrain[:, 0], bins=bins, stat='density', ax=ax)
-sns.lineplot(x, y, ax=ax)
-ax.step(x, y, where='mid')
-plt.savefig(save_str + '_fitted2')
-plt.show()
-plt.close()
+    loc_hat = model.loc.numpy()
+    logscale_hat = model.logscale.numpy()
+    logits_hat = model.logits.numpy()
 
-p = DiscretizedLogisticMix(loc=loc_hat, logscale=logscale_hat, mix_logits=logits_hat, low=low, high=high, levels=levels)
-y = np.exp(p.log_prob(x[:, None]).numpy().squeeze()) / bin_width
-fig, ax = plt.subplots()
-sns.histplot(x=xtrain[:, 0], bins=bins, stat='density', ax=ax)
-ax.step(x, y, where='mid')
-plt.savefig(save_str + '_fitted3')
-plt.show()
-plt.close()
+    fitted_p1 = tfd.Logistic(loc=loc_hat[:, :, 0], scale=np.exp(logscale_hat[:, :, 0]))
+    fitted_p2 = tfd.Logistic(loc=loc_hat[:, :, 1], scale=np.exp(logscale_hat[:, :, 1]))
+    y_logistic = 0.5 * np.exp(fitted_p1.log_prob(x[:, None])).squeeze() + 0.5 * np.exp(fitted_p2.log_prob(x[:, None, None])).squeeze()
+
+    fitted_p1 = DiscretizedLogistic(loc=loc_hat[:, :, 0], logscale=logscale_hat[:, :, 0], low=low, high=high, levels=levels)
+    fitted_p2 = DiscretizedLogistic(loc=loc_hat[:, :, 1], logscale=logscale_hat[:, :, 1], low=low, high=high, levels=levels)
+    y_discretized = 0.5 * np.exp(fitted_p1.log_prob(x[:, None])).squeeze() / bin_width + 0.5 * np.exp(fitted_p2.log_prob(x[:, None, None])).squeeze() / bin_width
+
+    fig, ax = plt.subplots()
+    sns.histplot(x=xtrain[:, 0], bins=bins, stat='density', ax=ax)
+    sns.lineplot(x, y_logistic, ax=ax)
+    ax.step(x, y_discretized, where='mid')
+    plt.savefig(save_str + '_fitted2')
+    plt.show()
+    plt.close()
+
+    p = PlainMixtureDiscretizedLogistic(loc=loc_hat, logscale=logscale_hat, mix_logits=logits_hat, low=low, high=high, levels=levels)
+    y = np.exp(p.log_prob(x[:, None]).numpy().squeeze()) / bin_width
+
+    fig, ax = plt.subplots()
+    sns.histplot(x=xtrain[:, 0], bins=bins, stat='density', ax=ax)
+    ax.step(x, y, where='mid')
+    plt.savefig(save_str + '_fitted3')
+    plt.show()
+    plt.close()
