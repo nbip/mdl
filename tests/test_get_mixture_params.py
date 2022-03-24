@@ -8,7 +8,6 @@ from models import get_mixture_params
 
 
 class TestGetMixtureParams(unittest.TestCase):
-
     def setUp(self) -> None:
         tf.random.set_seed(123)
         self.b, self.h, self.w, self.c = 5, 4, 4, 3
@@ -19,10 +18,12 @@ class TestGetMixtureParams(unittest.TestCase):
         # bin the data, to resemble images
         bin = True
         if bin:
-            x = np.floor(x * 256.) / 255.
+            x = np.floor(x * 256.0) / 255.0
         self.x = tf.convert_to_tensor(x)
 
-        logits = np.random.randn(self.b, self.h, self.w, self.n_mix * 10).astype(np.float32)
+        logits = np.random.randn(self.b, self.h, self.w, self.n_mix * 10).astype(
+            np.float32
+        )
         self.logits = tf.convert_to_tensor(logits)
 
     def test_gradient(self):
@@ -49,7 +50,9 @@ class TestGetMixtureParams(unittest.TestCase):
         # Therefore gradients of loc wrt x should exist for the red and green
         # channels, but not for the blue channel
         print(tf.reduce_sum(grads, axis=[0, 1, 2]))
-        assert tf.reduce_sum(grads[..., 2]) == 0.0, "Gradients of location parameter wrt blue channel exist"
+        assert (
+            tf.reduce_sum(grads[..., 2]) == 0.0
+        ), "Gradients of location parameter wrt blue channel exist"
 
     def test_without_x(self):
         """
@@ -59,12 +62,12 @@ class TestGetMixtureParams(unittest.TestCase):
         print(loc.shape)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     # PYTHONPATH=. python ./tests/test_get_mixture_params.py
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--gpu", type=str, default=' ', help="Choose GPU")
+    parser.add_argument("--gpu", type=str, default=" ", help="Choose GPU")
     args = parser.parse_args([])
 
     os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu

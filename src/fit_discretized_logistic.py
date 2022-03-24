@@ -5,20 +5,9 @@ Note about the distribution
 - When sampling the pdf from a continuous distribution and summing the points, you have to
   multiply with the interval width, to get a trapez estimate of the area under the curve, which should sum to 1
 - When sampling the pmf of the discretized distribution you should in principle only sample at the discrete
-  points at which it is defined. We could do something like snapping to the closest discrete point. If you sample
-  only the discrete points, these should sum to 1. That means that the height of that stick is the area in the
-  rectangle in the original continuous distribution. Therefore, for plotting purposes, when plotting the discretized
-  distribution along side the original continuous distribution, you should divide the pmf by the interval width to get
-  back to the rectangle height.
-# https://www.tensorflow.org/guide/autodiff  https://www.tensorflow.org/guide/advanced_autodiff
-# https://www.tensorflow.org/tutorials/customization/custom_training_walkthrough
-# https://www.tensorflow.org/guide/intro_to_modules
-# https://www.tensorflow.org/guide/basic_training_loops
-# https://www.tensorflow.org/guide/keras/train_and_evaluate
-# https://www.tensorflow.org/guide/keras/custom_layers_and_models
-# https://keras.io/guides/customizing_what_happens_in_fit/
-# https://keras.io/api/losses/
-# https://github.com/rll/deepul/blob/master/homeworks/solutions/hw1_solutions.ipynb
+  points at which it is defined. If you sample only the discrete points, these should sum to 1.
+- When plotting a pdf and pmf together: since the pmf is the interval_width * pdf_height in each interval,
+  to get back to the pdf height you should divide the pmf by the interval_width
 """
 
 import os
@@ -32,41 +21,6 @@ sns.set()
 from tensorflow_probability import distributions as tfd
 
 import models
-
-
-class Disc:
-    def __init__(self, loc, logscale, low=-1., high=1., levels=256.):
-        self.loc = loc
-        self.logscale = logscale
-        self.low = low
-        self.high = high
-        self.levels = levels
-
-        self.interval_width = (high - low) / (levels - 1.)
-
-        self.dx = self.interval_width / 2
-
-    def log_prob(self, x):
-
-        inv_scale = tf.exp(-self.logscale)
-
-        plus_in = inv_scale * (x + 0.5 - self.loc)
-        min_in = inv_scale * (x - 0.5 - self.loc)
-
-        cdf_plus = tf.nn.sigmoid(plus_in)  # CDF of logistics at x + 0.5
-        cdf_min = tf.nn.sigmoid(min_in)  # CDF of logistics at x - 0.5
-
-        cdf_delta = cdf_plus - cdf_min  # probability of x in bin [x - 0.5, x + 0.5]
-        log_cdf_delta = tf.math.log(tf.math.maximum(cdf_delta, 1e-12))
-
-        log_cdf_plus = tf.math.log(tf.maximum(tf.nn.sigmoid(inv_scale * (0.5 - self.loc)), 1e-12))
-
-        log_cdf_min = tf.math.log(tf.maximum(1 - tf.nn.sigmoid(inv_scale * (self.high - 1.5 - self.loc)), 1e-12))
-
-        x_log_probs = tf.where(x < 0.001, log_cdf_plus,
-                                  tf.where(x > self.high - 1 - 1e-3,
-                                              log_cdf_min, log_cdf_delta))
-        return x_log_probs
 
 
 def discretize_data(x, low, high, levels):
@@ -132,32 +86,41 @@ def train_epochs(model, xtrain, xval, optimizer, epochs):
         train_loss.append(train(model, xtrain, optimizer))
         val_loss.append(eval(model, xval))
         if epoch % 20 == 0:
-            print("epoch {0}/{1}, train loss {2:.2f}, val loss {3:.2f}".format(epoch, epochs, train_loss[-1], val_loss[-1]))
+            print(
+                "epoch {0}/{1}, train loss {2:.2f}, val loss {3:.2f}".format(
+                    epoch, epochs, train_loss[-1], val_loss[-1]
+                )
+            )
 
     return train_loss, val_loss
 
 
 class MyModel(tf.keras.Model):
-    def __init__(self,
-                 dim=1,
-                 low=0.,
-                 high=1.,
-                 levels=256.,
-                 **kwargs):
+    def __init__(self, dim=1, low=0.0, high=1.0, levels=256.0, **kwargs):
         super(MyModel, self).__init__(**kwargs)
 
         self.low = low
         self.high = high
         self.levels = float(levels)
 
-        self.loc = tf.Variable(((self.high - self.low) / 2) * tf.ones((1, dim)), dtype=tf.float32)
-        self.logscale = tf.Variable((-1. + tf.math.log(self.high)) * tf.ones((1, dim)), dtype=tf.float32)
+        self.loc = tf.Variable(
+            ((self.high - self.low) / 2) * tf.ones((1, dim)), dtype=tf.float32
+        )
+        self.logscale = tf.Variable(
+            (-1.0 + tf.math.log(self.high)) * tf.ones((1, dim)), dtype=tf.float32
+        )
 
-    def call(self, x):
+    def call(self, x, **kwargs):
 
         # x has dimensions [batch, features]
 
-        px = models.DiscretizedLogistic(loc=self.loc, logscale=self.logscale, low=self.low, high=self.high, levels=self.levels)
+        px = models.DiscretizedLogistic(
+            loc=self.loc,
+            logscale=self.logscale,
+            low=self.low,
+            high=self.high,
+            levels=self.levels,
+        )
 
         log_px = tf.reduce_sum(px.log_prob(x), axis=-1)
 
@@ -166,36 +129,38 @@ class MyModel(tf.keras.Model):
         return loss, {}
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
 
-    save_str = 'discretized_task01'
+    save_str = "discretized_fit"
 
     os.environ["CUDA_VISIBLE_DEVICES"] = ""
     # ---- dynamic GPU memory allocation
-    gpus = tf.config.list_physical_devices('GPU')
+    gpus = tf.config.list_physical_devices("GPU")
     if gpus:
         tf.config.experimental.set_memory_growth(gpus[0], True)
 
     # ---- generate data
-    low = 0.
-    high = 1.
-    levels = 256.
+    low = 0.0
+    high = 1.0
+    levels = 256.0
     bin_width = (high - low) / (levels - 1)
     bins = np.linspace(low, high, int(levels)) - bin_width / 2
 
-    p = models.DiscretizedLogistic(loc=0.75, logscale=-4., low=low, high=high, levels=levels)
+    p = models.DiscretizedLogistic(
+        loc=0.75, logscale=-4.0, low=low, high=high, levels=levels
+    )
     x = np.linspace(low, high, int(levels))
     y = np.exp(p.log_prob(x)) / bin_width
-    np.sum(y)
 
     xtrain, xval, p_true = data1(5000)
     y_true = np.exp(p_true.log_prob(x))
 
-    fig, ax = plt.subplots()
-    sns.histplot(x=xtrain[:, 0], bins=bins, stat='density', ax=ax)
-    ax.step(x, y, where='mid')
-    sns.lineplot(x, y_true, ax=ax)
-    plt.savefig(save_str + '_data')
+    fig, ax = plt.subplots(2)
+    sns.histplot(x=xtrain[:, 0], bins=bins, stat="density", ax=ax[0])
+    ax[0].step(x, y, where="mid", color='C2')
+    sns.histplot(x=xtrain[:, 0], bins=bins, stat="density", ax=ax[1])
+    sns.lineplot(x, y_true, ax=ax[1], color='C3')
+    plt.savefig(save_str + "_data")
     plt.show()
     plt.close()
 
@@ -215,14 +180,16 @@ if __name__ == '__main__':
     fitted_p = tfd.Logistic(loc=loc_hat, scale=np.exp(logscale_hat))
     y_logistic = np.exp(fitted_p.log_prob(x[:, None])).squeeze()
 
-    fitted_p = models.DiscretizedLogistic(loc=loc_hat, logscale=logscale_hat, low=low, high=high, levels=levels)
+    fitted_p = models.DiscretizedLogistic(
+        loc=loc_hat, logscale=logscale_hat, low=low, high=high, levels=levels
+    )
     y_discretized = np.exp(fitted_p.log_prob(x[:, None])).squeeze() / bin_width
 
     fig, ax = plt.subplots()
     # sns.histplot(x=xtrain[:, 0], bins=bins, stat='density', ax=ax)
     sns.lineplot(x, y_logistic, ax=ax)
-    ax.step(x, y_discretized, where='mid')
-    plt.savefig(save_str + '_fitted')
+    ax.step(x, y_discretized, where="mid")
+    plt.savefig(save_str + "_fitted")
     plt.show()
     plt.close()
 
@@ -232,9 +199,9 @@ if __name__ == '__main__':
     y = 0.5 * np.exp(p1.log_prob(x)) + 0.5 * np.exp(p2.log_prob(x))
 
     fig, ax = plt.subplots()
-    sns.histplot(x=xtrain[:, 0], bins=bins, stat='density', ax=ax)
+    sns.histplot(x=xtrain[:, 0], bins=bins, stat="density", ax=ax)
     sns.lineplot(x, y, ax=ax)
-    plt.savefig(save_str + '_data2')
+    plt.savefig(save_str + "_data2")
     plt.show()
     plt.close()
 
@@ -245,13 +212,15 @@ if __name__ == '__main__':
 
     fitted_p = tfd.Logistic(loc=loc_hat, scale=np.exp(logscale_hat))
     y_logistic = np.exp(fitted_p.log_prob(x[:, None])).squeeze()
-    fitted_p = models.DiscretizedLogistic(loc=loc_hat, logscale=logscale_hat, low=low, high=high, levels=levels)
+    fitted_p = models.DiscretizedLogistic(
+        loc=loc_hat, logscale=logscale_hat, low=low, high=high, levels=levels
+    )
     y_discretized = np.exp(fitted_p.log_prob(x[:, None])).squeeze() / bin_width
 
     fig, ax = plt.subplots()
-    sns.histplot(x=xtrain[:, 0], bins=bins, stat='density', ax=ax)
+    sns.histplot(x=xtrain[:, 0], bins=bins, stat="density", ax=ax)
     sns.lineplot(x, y_logistic, ax=ax)
-    ax.step(x, y_discretized, where='mid')
-    plt.savefig(save_str + '_fitted2')
+    ax.step(x, y_discretized, where="mid")
+    plt.savefig(save_str + "_fitted2")
     plt.show()
     plt.close()

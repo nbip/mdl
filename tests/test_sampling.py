@@ -8,7 +8,6 @@ from models import MixtureDiscretizedLogistic, MixtureDiscretizedLogisticOpenai
 
 
 class TestSampling(unittest.TestCase):
-
     def setUp(self) -> None:
         tf.random.set_seed(123)
         self.b, self.h, self.w, self.c = 5, 4, 4, 3
@@ -19,10 +18,12 @@ class TestSampling(unittest.TestCase):
         # bin the data, to resemble images
         bin = True
         if bin:
-            x = np.floor(x * 256.) / 255.
+            x = np.floor(x * 256.0) / 255.0
         self.x = tf.convert_to_tensor(x)
 
-        parameters = np.random.randn(self.b, self.h, self.w, self.n_mix * 10).astype(np.float32)
+        parameters = np.random.randn(self.b, self.h, self.w, self.n_mix * 10).astype(
+            np.float32
+        )
         self.parameters = tf.convert_to_tensor(parameters)
 
     def test_sampling(self):
@@ -37,12 +38,12 @@ class TestSampling(unittest.TestCase):
         print(tf.reduce_mean(p2_samples, axis=0)[0, 0, 0, :])
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     # PYTHONPATH=. python ./tests/test_sampling.py
     import argparse
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--gpu", type=str, default=' ', help="Choose GPU")
+    parser.add_argument("--gpu", type=str, default=" ", help="Choose GPU")
     args = parser.parse_args([])
 
     os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu

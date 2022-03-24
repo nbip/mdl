@@ -21,40 +21,47 @@ class DiscretizedLogistic(tfp.distributions.Distribution):
 
     """
 
-    def __init__(self,
-                 loc,
-                 logscale,
-                 low,
-                 high,
-                 levels,
-                 validate_args=False,
-                 allow_nan_stats=True,
-                 name='DiscretizedLogistic'):
+    def __init__(
+        self,
+        loc,
+        logscale,
+        low,
+        high,
+        levels,
+        validate_args=False,
+        allow_nan_stats=False,
+        name="DiscretizedLogistic",
+    ):
 
         parameters = dict(locals())
 
-        interval_width = (high - low) / (levels - 1.)
-        dx = interval_width / 2.
+        interval_width = (high - low) / (levels - 1.0)
+        dx = interval_width / 2.0
 
         with tf.name_scope(name) as name:
             dtype = dtype_util.common_dtype([loc, logscale], dtype_hint=tf.float32)
             self._loc = tensor_util.convert_nonref_to_tensor(
-                loc, name='loc', dtype=dtype)
+                loc, name="loc", dtype=dtype
+            )
             self._logscale = tensor_util.convert_nonref_to_tensor(
-                logscale, name='logscale', dtype=dtype)
+                logscale, name="logscale", dtype=dtype
+            )
             self._low = tensor_util.convert_nonref_to_tensor(
-                low, name='low', dtype=dtype)
+                low, name="low", dtype=dtype
+            )
             self._high = tensor_util.convert_nonref_to_tensor(
-                high, name='high', dtype=dtype)
+                high, name="high", dtype=dtype
+            )
             self._levels = tensor_util.convert_nonref_to_tensor(
-                levels, name='levels', dtype=dtype)
+                levels, name="levels", dtype=dtype
+            )
             self._levels = tensor_util.convert_nonref_to_tensor(
-                levels, name='levels', dtype=dtype)
+                levels, name="levels", dtype=dtype
+            )
             self._interval_width = tensor_util.convert_nonref_to_tensor(
-                interval_width, name='interval_width', dtype=dtype)
-            self._dx = tensor_util.convert_nonref_to_tensor(
-                dx, name='dx', dtype=dtype)
-
+                interval_width, name="interval_width", dtype=dtype
+            )
+            self._dx = tensor_util.convert_nonref_to_tensor(dx, name="dx", dtype=dtype)
 
         super(DiscretizedLogistic, self).__init__(
             dtype=self._logscale.dtype,
@@ -62,7 +69,8 @@ class DiscretizedLogistic(tfp.distributions.Distribution):
             validate_args=validate_args,
             allow_nan_stats=allow_nan_stats,
             parameters=parameters,
-            name=name)
+            name=name,
+        )
 
     @property
     def loc(self):
@@ -99,7 +107,7 @@ class DiscretizedLogistic(tfp.distributions.Distribution):
 
     def _z(self, x):
         """Standardize input `x` to a unit logistic."""
-        with tf.name_scope('standardize'):
+        with tf.name_scope("standardize"):
             return (x - self.loc) * tf.exp(-self.logscale)
 
     def _mean(self, **kwargs):
@@ -135,7 +143,7 @@ class DiscretizedLogistic(tfp.distributions.Distribution):
         # Left edge, if x=-1.: All the CDF in ]-inf, x + dx]
         # Right edge, if x=1.: All the CDF in [x - dx, inf[
         left_edge = interval_stop - tf.nn.softplus(interval_stop)
-        right_edge = - tf.nn.softplus(interval_start)
+        right_edge = -tf.nn.softplus(interval_start)
 
         # ---- approximated log prob, if the prob is too small
         # https://github.com/openai/pixel-cnn/blob/master/pixel_cnn_pp/nn.py#L70
@@ -149,8 +157,12 @@ class DiscretizedLogistic(tfp.distributions.Distribution):
         # using tf.less_equal(x, self.low) and x < -0.999 as in
         # https://github.com/openai/pixel-cnn/blob/master/pixel_cnn_pp/nn.py#L81
         # otherwise there shouldn't be.
-        safe_log_prob_with_left_edge = tf.where(tf.less_equal(x, self.low), left_edge, safe_log_prob)
-        safe_log_prob_with_edges = tf.where(tf.greater_equal(x, self.high), right_edge, safe_log_prob_with_left_edge)
+        safe_log_prob_with_left_edge = tf.where(
+            tf.less_equal(x, self.low), left_edge, safe_log_prob
+        )
+        safe_log_prob_with_edges = tf.where(
+            tf.greater_equal(x, self.high), right_edge, safe_log_prob_with_left_edge
+        )
 
         return safe_log_prob_with_edges
 
@@ -162,16 +174,18 @@ class DiscretizedLogistic(tfp.distributions.Distribution):
         return samples
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
 
-    dist = DiscretizedLogistic(loc=[1.], logscale=[0.], low=0., high=2., levels=3)
+    dist = DiscretizedLogistic(loc=[1.0], logscale=[-1.0], low=0.0, high=2.0, levels=3)
     dist.sample()
     dist.sample(10)
-    tf.reduce_sum([tf.exp(dist.log_prob(0.)),
-                   tf.exp(dist.log_prob(1.)),
-                   tf.exp(dist.log_prob(2.))])
+    tf.reduce_sum(
+        [
+            tf.exp(dist.log_prob(0.0)),
+            tf.exp(dist.log_prob(1.0)),
+            tf.exp(dist.log_prob(2.0)),
+        ]
+    )
 
     print(dist.parameters)
     print(dist.mean())
-
-
