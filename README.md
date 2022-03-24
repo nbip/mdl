@@ -1,6 +1,7 @@
 # Mixture of discretized logistic distributions
 
 ### Overview
+Comparison of different implementations in `src/compare_mdl_implementations.py`. The different implementations are
 
 - `mdl_openai.py`: Original OpenAI [PixelCNN++](https://github.com/openai/pixel-cnn) version.  
 - `mdl_openai_wrapper.py`: Wrapper around then OpenAI version. Has the benefit of a `tfp.distributions`-like interface and much faster sampling.  
@@ -11,7 +12,7 @@
 - `discretized_logistic_tfd.py`: Plain discretized logistic distribution, subclassing tfd.Distribution.  
 - `mixture_discretized_logistic.py`: Plain mixture of discretized logistic distributions.   
 
-# Resources:
+### Resources:
 [PixelCNN++](https://github.com/openai/pixel-cnn).  
 [Variational Neural Cellular Automata](https://github.com/rasmusbergpalm/vnca).  
 Subclassing tfd.Distribution: [tfp.distributions.Distribution](https://www.tensorflow.org/probability/api_docs/python/tfp/distributions/Distribution). See also 

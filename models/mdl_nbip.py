@@ -74,11 +74,12 @@ class MixtureDiscretizedLogistic(tfd.Distribution):
 
         # ---- pixel-cnn style: sum over sub-pixel log_probs before mixture-weighing
         # https://github.com/openai/pixel-cnn/blob/master/pixel_cnn_pp/nn.py#L83
+        # ---- [batch, h, w, n_mix]
         weighted_log_probs = (
             tf.reduce_sum(discretized_logistic_log_probs, axis=-2) + mix_log_weights
         )
 
-        # ---- sum over weighted log-probs
+        # ---- sum over mixture components
         # ---- [batch, h, w, ch]
         return tf.reduce_logsumexp(weighted_log_probs, axis=-1)
 
@@ -243,33 +244,6 @@ class MixtureDiscretizedLogistic(tfd.Distribution):
     def loc(self):
         """Distribution parameter for the location."""
         return tf.reduce_mean(self.sample(100_000), axis=0)
-
-    # @property
-    # def loc(self):
-    #     """Distribution parameter for the location."""
-    #     # TODO: I don't think you can do this...
-    #
-    #     _loc, logscale, coeffs, mix_logits = self._split_params()
-    #
-    #     # ---- adjust the locs, so instead of p(R,G,B) = p(R)p(G)p(B) we get
-    #     # p(R,G,B) = p(R)p(G|R)p(B|R,G)
-    #     # Notice we're not conditioning on any observed pixel values here
-    #     loc_r = tf.clip_by_value(_loc[..., 0, :], -1., 1.)
-    #     loc_g = tf.clip_by_value(_loc[..., 1, :] + coeffs[..., 0, :] * loc_r, -1., 1.)
-    #     loc_b = tf.clip_by_value(_loc[..., 2, :] + coeffs[..., 1, :] * loc_r + coeffs[..., 2, :] * loc_g, -1., 1)
-    #
-    #     loc = tf.concat([loc_r[..., None, :], loc_g[..., None, :], loc_b[..., None, :]], axis=-2)
-    #
-    #     # ---- convert mixture logits to mixture weights [batch, h, w, n_mix]
-    #     mix_weights = tf.nn.softmax(mix_logits, axis=-1)
-    #
-    #     # ---- expand pixel dimension [batch, h, w, 1, n_mix]
-    #     mix_weights = tf.expand_dims(mix_weights, axis=-2)
-    #
-    #     # ---- weigh the locs by the mixture weights [batch, h, w, ch]
-    #     weighted_locs = tf.reduce_sum(loc * mix_weights, axis=-1)
-    #
-    #     return weighted_locs
 
 
 if __name__ == "__main__":
