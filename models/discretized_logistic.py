@@ -5,28 +5,9 @@ from tensorflow_probability import distributions as tfd
 class DiscretizedLogistic:
     """
     Discretized version of the logistic distribution f(x; mu, s) = e^{-(x - mu) / s} / s(1 + e^{-(x-mu)/s})^2
-
-    This version is set up to be comparable to the original OpenAI pixelCNN version
-    https://github.com/openai/pixel-cnn/blob/master/pixel_cnn_pp/nn.py
-
-    resources:
-    https://github.com/openai/pixel-cnn/blob/master/pixel_cnn_pp/nn.py
-    https://github.com/rasmusbergpalm/vnca/blob/main/modules/dml.py
-    https://github.com/NVlabs/NVAE/blob/master/distributions.py
-    https://github.com/openai/vdvae/blob/main/vae_helpers.py
-    https://github.com/pclucas14/pixel-cnn-pp/blob/master/utils.py
-    https://github.com/JakobHavtorn/hvae-oodd/blob/main/oodd/layers/likelihoods.py#L536
-    https://arxiv.org/pdf/1701.05517.pdf
-    https://github.com/rll/deepul/blob/master/demos/lecture2_autoregressive_models_demos.ipynb
-    http://bjlkeng.github.io/posts/pixelcnn/
-    https://bjlkeng.github.io/posts/autoregressive-autoencoders/
-    https://bjlkeng.github.io/posts/importance-sampling-and-estimating-marginal-likelihood-in-variational-autoencoders/
-    https://github.com/bjlkeng/sandbox/blob/master/notebooks/vae-importance_sampling/vae-cifar10-importance-sampling.ipynb
-    https://github.com/nbip/sM2/blob/main/utils/discretized_logistic.py
-    https://github.com/pclucas14/pixel-cnn-pp/blob/master/utils.py#L34
     """
 
-    def __init__(self, loc, logscale, low=-1., high=1., levels=256.):
+    def __init__(self, loc, logscale, low=-1.0, high=1.0, levels=256.0):
         self.loc = loc
         self.logscale = logscale
         self.low = low
@@ -34,10 +15,10 @@ class DiscretizedLogistic:
         self.levels = levels
 
         # ---- width of interval around each center-value
-        self.interval_width = (high - low) / (levels - 1.)
+        self.interval_width = (high - low) / (levels - 1.0)
 
         # ---- half interval width for range edge cases
-        self.dx = self.interval_width / 2.
+        self.dx = self.interval_width / 2.0
 
     def logistic_cdf(self, x):
         a = (x - self.loc) * tf.exp(-self.logscale)
@@ -48,9 +29,9 @@ class DiscretizedLogistic:
         log pdf value times interval width as an approximation to the area under the curve in that interval
         """
         a = (x - self.loc) / tf.exp(self.logscale)
-        log_pdf_val = - a - self.logscale - 2 * tf.nn.softplus(-a)
+        log_pdf_val = -a - self.logscale - 2 * tf.nn.softplus(-a)
         return log_pdf_val + tf.cast(tf.math.log(self.interval_width), tf.float32)
-        
+
     def log_prob(self, x):
 
         centered_x = x - self.loc
@@ -73,7 +54,7 @@ class DiscretizedLogistic:
         # Left edge, if x=-1.: All the CDF in ]-inf, x + dx]
         # Right edge, if x=1.: All the CDF in [x - dx, inf[
         left_edge = interval_stop - tf.nn.softplus(interval_stop)
-        right_edge = - tf.nn.softplus(interval_start)
+        right_edge = -tf.nn.softplus(interval_start)
 
         # ---- approximated log prob, if the prob is too small
         # https://github.com/openai/pixel-cnn/blob/master/pixel_cnn_pp/nn.py#L70
@@ -84,11 +65,15 @@ class DiscretizedLogistic:
 
         # ---- use tf.where to select the edge case probabilities when relevant
         # if the input values are not binned, there is a difference between
-        # using tf.less_equal(x, self.low) and x < -0.999 as in 
-        # https://github.com/openai/pixel-cnn/blob/master/pixel_cnn_pp/nn.py#L81 
+        # using tf.less_equal(x, self.low) and x < -0.999 as in
+        # https://github.com/openai/pixel-cnn/blob/master/pixel_cnn_pp/nn.py#L81
         # otherwise there shouldn't be.
-        safe_log_prob_with_left_edge = tf.where(tf.less_equal(x, self.low), left_edge, safe_log_prob)
-        safe_log_prob_with_edges = tf.where(tf.greater_equal(x, self.high), right_edge, safe_log_prob_with_left_edge)
+        safe_log_prob_with_left_edge = tf.where(
+            tf.less_equal(x, self.low), left_edge, safe_log_prob
+        )
+        safe_log_prob_with_edges = tf.where(
+            tf.greater_equal(x, self.high), right_edge, safe_log_prob_with_left_edge
+        )
 
         return safe_log_prob_with_edges
 
