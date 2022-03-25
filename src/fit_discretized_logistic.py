@@ -157,9 +157,9 @@ if __name__ == "__main__":
 
     fig, ax = plt.subplots(2)
     sns.histplot(x=xtrain[:, 0], bins=bins, stat="density", ax=ax[0])
-    ax[0].step(x, y, where="mid", color='C2')
+    ax[0].step(x, y, where="mid", color="C2")
     sns.histplot(x=xtrain[:, 0], bins=bins, stat="density", ax=ax[1])
-    sns.lineplot(x, y_true, ax=ax[1], color='C3')
+    sns.lineplot(x, y_true, ax=ax[1], color="C3")
     plt.savefig(save_str + "_data")
     plt.show()
     plt.close()

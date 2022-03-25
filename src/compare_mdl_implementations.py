@@ -81,4 +81,4 @@ if __name__ == "__main__":
     print(tf.reduce_mean((wrapper_samples + 1) / 2, axis=0))
     print(vnca_mean.numpy())
     print(tf.reduce_mean((nbip_samples + 1) / 2, axis=0))
-    print((px_nbip.loc + 1) / 2)
+    print((px_nbip.mean(n=100_000) + 1.0) / 2.0)
