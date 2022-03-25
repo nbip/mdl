@@ -252,36 +252,31 @@ if __name__ == "__main__":
 
     os.environ["CUDA_VISIBLE_DEVICES"] = ""
 
-    print("Herro")
+    # ---- generate torch / tf data
+    b, c, h, w = 5, 3, 4, 4
+    n_mixtures = 5
+    x = np.random.rand(b, h, w, c).astype(np.float32)
 
-    # # ---- generate torch / tf data
-    # b, c, h, w = 5, 3, 4, 4
-    # n_mixtures = 5
-    # x = np.random.rand(b, c, h, w).astype(np.float32)
-    #
-    # # bin the data, to resemble images
-    # bin = True
-    # if bin:
-    #     x = np.floor(x * 256.) / 255.
-    #
-    # x_tf = np.transpose(x, axes=[0, 2, 3, 1])
-    # assert np.sum(x[:, 0, :, :]) == np.sum(x_tf[:, :, :, 0])
-    # x_tf = tf.convert_to_tensor(x_tf)
-    #
-    # logits_t = np.random.randn(b, n_mixtures * 10, h, w).astype(np.float32)
-    # logits_tf = np.transpose(logits_t, axes=[0, 2, 3, 1])
-    # logits_tf = tf.convert_to_tensor(logits_tf)
-    #
-    # p = MixtureDiscretizedLogistic(logits_tf)
-    #
-    # p.log_prob(2. * x_tf - 1.)
-    #
-    # p.sample(1000)
-    # p.loc
+    # bin the data, to resemble images
+    bin = True
+    if bin:
+        x = np.floor(x * 256.) / 255.
 
-    # ---- can we handle a leading sample dimension, as in IWAEs?
+    x = tf.convert_to_tensor(x)
+
+    logits = np.random.randn(b, h, w, n_mixtures * 10).astype(np.float32)
+    logits = tf.convert_to_tensor(logits)
+
+    p = MixtureDiscretizedLogistic(logits)
+    lp = p.log_prob(2. * x - 1.)
+    print(lp.shape)
+    print(p.sample(1000).shape)
+
+    # ---- a leading sample dimension, as in IWAEs:
     s, b, c, h, w = 10, 6, 3, 4, 4
     n_mixtures = 5
+    logits = np.random.randn(s, b, h, w, n_mixtures * 10).astype(np.float32)
+    logits = tf.convert_to_tensor(logits)
     x = np.random.rand(b, h, w, c).astype(np.float32)
 
     # bin the data, to resemble images
@@ -289,12 +284,9 @@ if __name__ == "__main__":
     if bin:
         x = np.floor(x * 256.0) / 255.0
 
-    x_tf = tf.convert_to_tensor(x)
+    x = tf.convert_to_tensor(x)
 
-    logits = np.random.randn(s, b, h, w, n_mixtures * 10).astype(np.float32)
-    logits_tf = tf.convert_to_tensor(logits)
+    p = MixtureDiscretizedLogistic(logits)
 
-    p = MixtureDiscretizedLogistic(logits_tf)
-
-    lp = p.log_prob(2.0 * x_tf - 1.0)
+    lp = p.log_prob(2.0 * x - 1.0)
     print(lp.shape)

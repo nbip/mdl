@@ -196,8 +196,6 @@ if __name__ == "__main__":
 
     os.environ["CUDA_VISIBLE_DEVICES"] = ""
 
-    print("Herro")
-
     # ---- generate torch / tf data
     b, c, h, w = 5, 3, 4, 4
     n_mixtures = 5
@@ -208,13 +206,13 @@ if __name__ == "__main__":
     if bin:
         x = np.floor(x * 256.0) / 255.0
 
-    x_tf = tf.convert_to_tensor(x)
+    x = tf.convert_to_tensor(x)
 
     logits = np.random.randn(b, h, w, n_mixtures * 10).astype(np.float32)
-    logits_tf = tf.convert_to_tensor(logits)
+    logits = tf.convert_to_tensor(logits)
 
-    p = MixtureDiscretizedLogisticOpenai(logits_tf)
+    p = MixtureDiscretizedLogisticOpenai(logits)
 
-    p.log_prob(2.0 * x_tf - 1.0)
-    p.sample()
-    p.sample(10)
+    print(p.log_prob(2.0 * x - 1.0).shape)
+    print(p.sample().shape)
+    print(p.sample(10).shape)
