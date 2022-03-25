@@ -189,8 +189,12 @@ if __name__ == "__main__":
         levels=levels,
     )
     y_discretized = (
-        logits_hat[:, :, 0] * np.exp(fitted_p1.log_prob(x[:, None])).squeeze() / bin_width
-        + logits_hat[:, :, 1] * np.exp(fitted_p2.log_prob(x[:, None, None])).squeeze() / bin_width
+        logits_hat[:, :, 0]
+        * np.exp(fitted_p1.log_prob(x[:, None])).squeeze()
+        / bin_width
+        + logits_hat[:, :, 1]
+        * np.exp(fitted_p2.log_prob(x[:, None, None])).squeeze()
+        / bin_width
     )
 
     fig, ax = plt.subplots()

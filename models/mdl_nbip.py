@@ -240,10 +240,8 @@ class MixtureDiscretizedLogistic(tfd.Distribution):
 
         return selected_samples
 
-    @property
-    def loc(self):
-        """Distribution parameter for the location."""
-        return tf.reduce_mean(self.sample(100_000), axis=0)
+    def _mean(self, n=100, **kwargs):
+        return tf.reduce_mean(self.sample(100), axis=0)
 
 
 if __name__ == "__main__":
@@ -260,7 +258,7 @@ if __name__ == "__main__":
     # bin the data, to resemble images
     bin = True
     if bin:
-        x = np.floor(x * 256.) / 255.
+        x = np.floor(x * 256.0) / 255.0
 
     x = tf.convert_to_tensor(x)
 
@@ -268,7 +266,7 @@ if __name__ == "__main__":
     logits = tf.convert_to_tensor(logits)
 
     p = MixtureDiscretizedLogistic(logits)
-    lp = p.log_prob(2. * x - 1.)
+    lp = p.log_prob(2.0 * x - 1.0)
     print(lp.shape)
     print(p.sample(1000).shape)
 
