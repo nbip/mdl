@@ -61,7 +61,9 @@ class PlainMixtureDiscretizedLogistic(DiscretizedLogistic):
 
 class PixelMixtureDiscretizedLogistic(DiscretizedLogistic):
     """
-    Mixture of discretized logistic distributions, specific to pixels.
+    Mixture of discretized logistic distributions, specific to pixels, but not similar to PixelCNN++.
+
+    The difference is NOT conditioning on observed x.
 
     The specificity to pixels comes from summing over the sub-pixel logprobs
     before weighing with the mixture logits. That is, there are a number
@@ -116,13 +118,10 @@ class PixelMixtureDiscretizedLogistic(DiscretizedLogistic):
     def sample(self, n_samples=[]):
         """OBS! this is not similar to the OpenAI PixelCNN sampling!
 
-        If the self.loc parameter depends on observed x (as in PixelCNN) then
-        this sampling method should not be used. If the self.loc parameter does
-        not depend on any observed x, then this sampling methods can be used.
+        See the original sampling method here: https://github.com/openai/pixel-cnn/blob/master/pixel_cnn_pp/nn.py#L89
 
-        See `mdl_nbip.py` or `mdl_openai_wrapper.py` for a sampling mechanism
-        identical to PixelCNN, or the original implementaion in `mdl_openai.py`
-        or here: https://github.com/openai/pixel-cnn/blob/master/pixel_cnn_pp/nn.py#L89
+        Instead, since there is no autoregressive dependence on x in p(r,g,b),
+        there is no need to sample r,g,b sequentially.
         """
 
         # ---- sample the mixture component
@@ -149,18 +148,14 @@ def get_mixture_params(parameters, x=None):
     """
     Prepare parameters for a mixture of discretized logistic distributions.
 
-    This version is set up to be comparable to the original OpenAI pixelCNN version
-    https://github.com/openai/pixel-cnn/blob/master/pixel_cnn_pp/nn.py
-
     Assumes parameters shape: [batch, h, w, n_mix * 10]
     Assumes x shape: [batch, h, w, n_channels = 3]
     Assumes x in [-1., 1.]
 
     :returns loc, logscale, mix_logits  # [batch, h, w, 3, n_mix]
 
-    Each pixel is modeled as
-      p(r,g,b) = p(r)p(g|r)p(b|r,g)
-    either conditioning on the learnt means or on actual pixel values.
+    Each pixel location is modeled as
+      (r,g,b) = (r)p(g|r)p(b|r,g)
 
     For each pixel there are n_mix * 10 parameters in total:
     - n_mix logits. These cover the whole pixel
@@ -183,21 +178,15 @@ def get_mixture_params(parameters, x=None):
     logscale = tf.maximum(logscale, -7)
     coeffs = tf.nn.tanh(coeffs)
 
-    # ---- adjust the locs, so instead of p(r,g,b) = p(r)p(g)p(b) we get
-    # p(r,g,b) = p(r)p(g|r)p(b|r,g)
-    # If the actual pixel values are available, use those, otherwise use the mapped locs
-    if x is not None:
-        loc_r = _loc[..., 0, :]
-        loc_g = _loc[..., 1, :] + coeffs[..., 0, :] * x[..., 0, None]
-        loc_b = (
-            _loc[..., 2, :]
-            + coeffs[..., 1, :] * x[..., 0, None]
-            + coeffs[..., 2, :] * x[..., 1, None]
-        )
-    else:
-        loc_r = _loc[..., 0, :]
-        loc_g = _loc[..., 1, :] + coeffs[..., 0, :] * loc_r
-        loc_b = _loc[..., 2, :] + coeffs[..., 1, :] * loc_r + coeffs[..., 2, :] * loc_g
+    # ---- adjust the locs, so we get
+    # (r,g,b) = (r)(g|r)(b|r,g)
+
+    # loc_r = _loc[..., 0, :]
+    # loc_g = _loc[..., 1, :] + coeffs[..., 0, :] * x[..., 0, None]
+    # loc_b = _loc[..., 2, :] + coeffs[..., 1, :] * x[..., 0, None] + coeffs[..., 2, :] * x[..., 1, None]
+    loc_r = _loc[..., 0, :]
+    loc_g = _loc[..., 1, :] + coeffs[..., 0, :] * loc_r
+    loc_b = _loc[..., 2, :] + coeffs[..., 1, :] * loc_r + coeffs[..., 2, :] * loc_g
 
     loc = tf.concat(
         [loc_r[..., None, :], loc_g[..., None, :], loc_b[..., None, :]], axis=-2
