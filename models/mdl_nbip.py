@@ -1,7 +1,7 @@
 """
 Mixture of discretized logistic distributions
 
-Rewritten for customizability, but results equal
+Rewritten for customizability, but with results equal
 to the original OpenAI PixelCNN version, see the tests
 
 https://github.com/openai/pixel-cnn/blob/master/pixel_cnn_pp/nn.py

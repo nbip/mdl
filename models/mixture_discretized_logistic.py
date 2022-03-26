@@ -1,7 +1,7 @@
 import tensorflow as tf
 from tensorflow_probability import distributions as tfd
 
-from .discretized_logistic import DiscretizedLogistic
+from models.discretized_logistic import DiscretizedLogistic
 
 
 class PlainMixtureDiscretizedLogistic(DiscretizedLogistic):
@@ -43,6 +43,7 @@ class PlainMixtureDiscretizedLogistic(DiscretizedLogistic):
         # ---- sample the mixture component
         cat_dist = tfd.Categorical(logits=self.mix_logits)
         cat_samples = cat_dist.sample(n_samples)
+        cat_samples_onehot = tf.one_hot(cat_samples, axis=-1, depth=self.n_mix)
         # TODO: maybe reparameterizable?
 
         # ---- sample the logistic distributions
@@ -53,8 +54,6 @@ class PlainMixtureDiscretizedLogistic(DiscretizedLogistic):
         # ---- pin out the samples chosen by the categorical distribution
         # we do that by multiplying the samples with a onehot encoding of the
         # mixture samples then summing along the last axis
-
-        cat_samples_onehot = tf.one_hot(cat_samples, axis=-1, depth=self.n_mix)
         selected_samples = tf.reduce_sum(logistic_samples * cat_samples_onehot, axis=-1)
 
         return selected_samples
@@ -107,7 +106,7 @@ class PixelMixtureDiscretizedLogistic(DiscretizedLogistic):
         # ---- pixel-cnn style: sum over sub-pixel log_probs before mixture-weighing
         # https://github.com/openai/pixel-cnn/blob/master/pixel_cnn_pp/nn.py#L83
         weighted_log_probs = (
-            tf.reduce_sum(discretized_logistic_log_probs, axis=3) + mix_log_weights
+            tf.reduce_sum(discretized_logistic_log_probs, axis=-2) + mix_log_weights
         )
 
         # ---- sum over weighted log-probs
@@ -127,11 +126,13 @@ class PixelMixtureDiscretizedLogistic(DiscretizedLogistic):
         """
 
         # ---- sample the mixture component
-        cat_dist = tfd.Categorical(logits=self.mix_logits)
-        cat_samples = cat_dist.sample(n_samples)
+        cat_dist = tfd.Categorical(logits=self.mix_logits)  # [batch, h, w]
+        cat_samples = cat_dist.sample(n_samples)            # [n_samples, batch, h, w]
+        cat_samples_onehot = tf.one_hot(cat_samples, axis=-1, depth=self.n_mix)  # [n_samples, batch, h, w, n_mix]
         # TODO: maybe reparameterizable?
 
         # ---- sample the logistic distributions
+        # [n_samples, batch, h, w, ch=3]
         logistic_samples = super(PixelMixtureDiscretizedLogistic, self).sample(
             n_samples
         )
@@ -139,9 +140,7 @@ class PixelMixtureDiscretizedLogistic(DiscretizedLogistic):
         # ---- pin out the samples chosen by the categorical distribution
         # we do that by multiplying the samples with a onehot encoding of the
         # mixture samples then summing along the last axis
-
-        cat_samples_onehot = tf.one_hot(cat_samples, axis=-1, depth=self.n_mix)
-        selected_samples = tf.reduce_sum(logistic_samples * cat_samples_onehot, axis=-1)
+        selected_samples = tf.reduce_sum(logistic_samples * cat_samples_onehot[..., None, :], axis=-1)
 
         return selected_samples
 
@@ -205,3 +204,53 @@ def get_mixture_params(parameters, x=None):
     )
 
     return loc, logscale, mix_logits
+
+
+if __name__ == '__main__':
+
+    import os
+    import numpy as np
+
+    os.environ["CUDA_VISIBLE_DEVICES"] = ""
+
+    # ---- generate torch / tf data
+    b, c, h, w = 5, 3, 4, 4
+    n_mixtures = 5
+    x = np.random.rand(b, h, w, c).astype(np.float32)
+
+    # bin the data, to resemble images
+    bin = True
+    if bin:
+        x = np.floor(x * 256.0) / 255.0
+
+    x = tf.convert_to_tensor(x)
+
+    logits = np.random.randn(b, h, w, n_mixtures * 10).astype(np.float32)
+    logits = tf.convert_to_tensor(logits)
+
+    loc, logscale, mix_logits = get_mixture_params(logits)
+    p = PixelMixtureDiscretizedLogistic(loc, logscale, mix_logits,)
+    lp = p.log_prob(2.0 * x - 1.0)
+    print(lp.shape)
+    print(p.sample(1000).shape)
+
+    # ---- a leading sample dimension, as in IWAEs:
+    s, b, c, h, w = 10, 6, 3, 4, 4
+    n_mixtures = 5
+    logits = np.random.randn(s, b, h, w, n_mixtures * 10).astype(np.float32)
+    logits = tf.convert_to_tensor(logits)
+    x = np.random.rand(b, h, w, c).astype(np.float32)
+
+    # bin the data, to resemble images
+    bin = True
+    if bin:
+        x = np.floor(x * 256.0) / 255.0
+
+    x = tf.convert_to_tensor(x)
+
+    loc, logscale, mix_logits = get_mixture_params(logits)
+    p = PixelMixtureDiscretizedLogistic(loc, logscale, mix_logits)
+
+    lp = p.log_prob(2.0 * x - 1.0)
+    print(lp.shape)
+    print(p.sample(1000).shape)
